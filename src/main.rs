@@ -1,4 +1,4 @@
-// --- ADAMAS NODE v0.1.0 (TRANSACTION TEST) ---
+// --- ADAMAS NODE v0.1.0 (WITH MEMPOOL) ---
 
 mod block;
 mod p2p;
@@ -6,10 +6,12 @@ mod wallet;
 mod transaction;
 mod database;
 mod avm;
+mod mempool; // <--- Importiamo il nuovo modulo
 
 use crate::block::Block;
 use crate::wallet::Wallet;
-use crate::transaction::Transaction; 
+use crate::transaction::Transaction;
+use crate::mempool::Mempool; // <--- Usiamo la struttura
 use crate::database::BlockchainDB;
 use crate::p2p::setup_p2p;
 use libp2p::futures::StreamExt;
@@ -28,26 +30,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   ADAMAS NODE v{} - Post-Quantum Chain", VERSION);
     println!("--------------------------------------------------");
     
-    // 1. Wallet Identity (DILITHIUM-5)
+    // 1. Inizializziamo i componenti
     let dev_wallet = Wallet::new();
     println!("[*] Wallet Identity (Truncated): {}...", &dev_wallet.public_key[..50]);
 
-    // 2. Transazione Test Alice -> Bob
-    let bob_address = "0xBob_Receiver_Address_Fake_Quantum_Key".to_string();
+    // Creiamo la Mempool vuota
+    let mut node_mempool = Mempool::new();
+    println!("[*] Mempool Initialized: Ready for transactions.");
 
-    println!("\n   [TX] Creating Quantum Transaction: Alice -> Bob (50 ADM)...");
-    
-    let tx = Transaction::new(&dev_wallet, bob_address.clone(), 50);
-    
-    println!("   [TX] Transaction Signed.");
-    println!("   [TX] Signature Length: {} chars", tx.signature.len());
+    // --- TEST FLUSSO COMPLETO ---
+    println!("\n   [FLOW] 1. Alice creates transaction...");
+    let bob_address = "0xBob_Fake_Address".to_string();
+    let tx = Transaction::new(&dev_wallet, bob_address, 100);
 
-    println!("   [TX] Verifying integrity...");
-    if tx.verify() {
-        println!("   [SUCCESS] Transaction is VALID and SECURE ✅");
+    println!("   [FLOW] 2. Submitting to Node Mempool...");
+    // Il nodo prova ad aggiungere la transazione alla Mempool
+    // (La funzione add_transaction farà la verifica Dilithium automaticamente)
+    let added = node_mempool.add_transaction(tx.clone());
+
+    if added {
+        println!("   [SUCCESS] Transaction is floating in the Mempool! 🌊");
     } else {
-        println!("   [ERROR] Transaction INVALID ❌");
+        println!("   [ERROR] Transaction rejected.");
     }
+    // ----------------------------
 
     let db = BlockchainDB::new(&db_path)?;
     println!("\n[*] Database Mounted:  ./{}", db_path);
