@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adamas Enterprise Monitor</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { border-bottom: 1px solid #30363d; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; font-size: 1.5rem; color: #58a6ff; }
+        .status-badge { background: #238636; color: white; padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; box-shadow: 0 0 10px #238636; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+        .stat-label { font-size: 0.9rem; color: #8b949e; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 5px; color: #fff; }
+        
+        /* TABLE STYLES */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; color: #8b949e; border-bottom: 1px solid #30363d; padding: 10px; font-size: 0.9rem; }
+        td { padding: 10px; border-bottom: 1px solid #21262d; font-family: monospace; color: #7ee787; font-size: 0.9rem; }
+        tr:first-child td { background-color: #1c2525; color: #fff; font-weight: bold; } /* Evidenzia l'ultimo blocco */
+
+        .hash-truncate { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+        .no-data { color: #8b949e; font-style: italic; padding: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div id="chain-name"><h1>SYSTEM LOADING...</h1></div>
+            <div class="status-badge">● LIVE CONNECTION</div>
+        </header>
+
+        <div class="card" style="display: flex; gap: 40px;">
+            <div>
+                <div class="stat-label">NODE IDENTITY</div>
+                <div class="stat-value" id="node-role">---</div>
+            </div>
+            <div>
+                <div class="stat-label">VERSION</div>
+                <div class="stat-value" id="version" style="color: #58a6ff;">---</div>
+            </div>
+            <div>
+                <div class="stat-label">STATUS</div>
+                <div class="stat-value" style="color: #238636;">SECURE</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top: 0; color: #c9d1d9;">⛓️ Blockchain Ledger (Real-Time)</h3>
+            <div id="blocks-container">
+                <table id="blocks-table">
+                    <thead>
+                        <tr>
+                            <th>HEIGHT</th>
+                            <th>BLOCK HASH (SHA-256)</th>
+                            <th>TXs</th>
+                            <th>STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocks-body">
+                        </tbody>
+                </table>
+                <div id="no-data-msg" class="no-data">Waiting for new blocks...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Funzione per aggiornare i dati
+        async function fetchSystemData() {
+            try {
+                // 1. Prendi Info Generali
+                const resStats = await fetch('/api/stats');
+                const dataStats = await resStats.json();
+                document.getElementById('chain-name').innerHTML = `<h1>${dataStats.chain_name}</h1>`;
+                document.getElementById('node-role').innerText = dataStats.node_role;
+                document.getElementById('version').innerText = dataStats.version;
+
+                // 2. Prendi i Blocchi
+                const resBlocks = await fetch('/api/blocks');
+                const blocks = await resBlocks.json();
+                
+                updateTable(blocks);
+
+            } catch (error) {
+                console.error('Connection lost:', error);
+            }
+        }
+
+        function updateTable(blocks) {
+            const tbody = document.getElementById('blocks-body');
+            const noDataMsg = document.getElementById('no-data-msg');
+
+            if (blocks.length === 0) {
+                noDataMsg.style.display = 'block';
+                tbody.innerHTML = '';
+                return;
+            }
+
+            noDataMsg.style.display = 'none';
+            let html = '';
+            
+            blocks.forEach(block => {
+                html += `
+                    <tr>
+                        <td>#${block.index}</td>
+                        <td><span class="hash-truncate">${block.hash}</span></td>
+                        <td>${block.tx_count}</td>
+                        <td><span style="color: #238636;">✔ CONFIRMED</span></td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Aggiorna ogni 2 secondi
+        setInterval(fetchSystemData, 2000);
+        fetchSystemData();
+    </script>
+</body>
+</html>
