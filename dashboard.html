@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adamas Enterprise Monitor</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        header { border-bottom: 1px solid #30363d; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; font-size: 1.5rem; color: #58a6ff; }
+        .status-badge { background: #238636; color: white; padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+        .stat-label { font-size: 0.9rem; color: #8b949e; }
+        .stat-value { font-size: 2rem; font-weight: bold; margin-top: 5px; }
+        .log-box { background: #000; border: 1px solid #30363d; padding: 15px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; color: #7ee787; }
+        .refresh-btn { background: #1f6feb; border: none; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .refresh-btn:hover { background: #388bfd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div id="chain-name"><h1>LOADING SYSTEM...</h1></div>
+            <div class="status-badge">SYSTEM ONLINE</div>
+        </header>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    <div class="stat-label">NODE ROLE</div>
+                    <div class="stat-value" id="node-role" style="font-size: 1.2rem;">---</div>
+                </div>
+                <div>
+                    <div class="stat-label">VERSION</div>
+                    <div class="stat-value" id="version" style="font-size: 1.2rem;">---</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🔐 Real-Time Blockchain Activity</h3>
+            <div class="log-box" id="activity-log">
+                <div>[SYSTEM] Dashboard initialized. Waiting for node data...</div>
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="refresh-btn" onclick="fetchData()">FORCE REFRESH</button>
+        </div>
+    </div>
+
+    <script>
+        // Questa funzione chiede i dati al nodo Rust
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                document.getElementById('chain-name').innerHTML = `<h1>${data.chain_name}</h1>`;
+                document.getElementById('node-role').innerText = data.node_role;
+                document.getElementById('version').innerText = data.version;
+
+                const logBox = document.getElementById('activity-log');
+                const time = new Date().toLocaleTimeString();
+                logBox.innerHTML += `<div>[${time}] 📡 Node is Active. Port: ${data.port}</div>`;
+                logBox.scrollTop = logBox.scrollHeight;
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Aggiorna ogni 3 secondi
+        setInterval(fetchData, 3000);
+        fetchData();
+    </script>
+</body>
+</html>
