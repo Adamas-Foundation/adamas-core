@@ -130,6 +130,4 @@ We are actively recruiting core contributors in the following areas:
 * **License:** MIT Open Source.
 * **Status:** Alpha v0.1.0 / Active Development.
 
-> *"Mathematics is the only truth that endures. Adamas is built on mathematics."*git add .
-git commit -m "Update: Final README sections"
-git push --force
+> *"Mathematics is the only truth that endures. Adamas is built on mathematics.
