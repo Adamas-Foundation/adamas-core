@@ -1,0 +1,7 @@
+{
+  "chain_name": "Rossi Logistica Secure Chain",
+  "version": "1.0.0-PRO",
+  "db_path": "rossi_db_primary",
+  "node_role": "Headquarters Server",
+  "server_port": 0
+}
