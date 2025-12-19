@@ -1,9 +1,15 @@
 use libp2p::{
-    gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux, PeerId, Multiaddr,
+    core::upgrade,
+    gossipsub, mdns, noise,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp, yamux, Multiaddr, Transport,
 };
 use libp2p::futures::StreamExt;
+// FIX: Importiamo l'Either corretto (quello pubblico di futures)
+use libp2p::futures::future::Either; 
+
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_512};
+use sha3::Sha3_512;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
@@ -14,7 +20,6 @@ use tokio::net::TcpListener;
 use std::env;
 
 // --- STRUTTURE BLOCKCHAIN ---
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Block {
     index: u32,
@@ -22,7 +27,7 @@ struct Block {
     data: String,
     previous_hash: String,
     hash: String,
-    node_id: String, 
+    node_id: String,
 }
 
 struct Blockchain {
@@ -40,7 +45,7 @@ impl Blockchain {
         let genesis_block = Block {
             index: 0,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
-            data: "GENESIS BLOCK - ADAMAS NETWORK".to_string(),
+            data: "GENESIS BLOCK - ADAMAS GLOBAL NETWORK".to_string(),
             previous_hash: "0".to_string(),
             hash: "00000000000000000000".to_string(),
             node_id: "GENESIS".to_string(),
@@ -54,6 +59,7 @@ impl Blockchain {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
         let previous_hash = previous_block.hash.clone();
         
+        use sha3::Digest; 
         let content_to_hash = format!("{}{}{}{}", new_index, timestamp, data, previous_hash);
         let mut hasher = Sha3_512::new();
         hasher.update(content_to_hash);
@@ -88,21 +94,51 @@ impl Blockchain {
 struct AdamasBehaviour {
     gossipsub: gossipsub::Behaviour,
     mdns: mdns::tokio::Behaviour,
+    relay_client: libp2p::relay::client::Behaviour,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
-    let http_port = args.get(1).unwrap_or(&"3000".to_string()).clone(); 
-    
-    let swarm = libp2p::SwarmBuilder::with_new_identity()
+    let http_port = args.get(1).unwrap_or(&"3000".to_string()).clone();
+
+    // 1. Generiamo le chiavi
+    let local_key = libp2p::identity::Keypair::generate_ed25519();
+    let local_peer_id = libp2p::PeerId::from(local_key.public());
+    println!("🔑 MY PEER ID: {}", local_peer_id);
+
+    // 2. Creiamo il Relay Client
+    let (relay_transport, relay_behaviour) = libp2p::relay::client::new(local_peer_id);
+
+    // 3. COSTRUZIONE DELLO SWARM
+    let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
-        .with_tcp(
-            tcp::Config::default(),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
-        .with_behaviour(|key| {
+        .with_other_transport(|key| {
+            let noise_config = noise::Config::new(key).unwrap();
+            let yamux_config = yamux::Config::default();
+
+            // Trasporto A: TCP
+            let tcp_transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+                .upgrade(upgrade::Version::V1)
+                .authenticate(noise_config.clone())
+                .multiplex(yamux_config.clone());
+
+            // Trasporto B: Relay
+            let relay_transport_upgraded = relay_transport
+                .upgrade(upgrade::Version::V1)
+                .authenticate(noise_config)
+                .multiplex(yamux_config);
+
+            // Unione dei due trasporti (TCP o Relay)
+            tcp_transport.or_transport(relay_transport_upgraded)
+                .map(|either, _| match either {
+                    // FIX: Usiamo l'Either corretto (di Futures)
+                    Either::Left((peer, stream)) => (peer, libp2p::core::muxing::StreamMuxerBox::new(stream)),
+                    Either::Right((peer, stream)) => (peer, libp2p::core::muxing::StreamMuxerBox::new(stream)),
+                })
+                .boxed()
+        })?
+        .with_behaviour(|key: &libp2p::identity::Keypair| {
             let message_id_fn = |message: &gossipsub::Message| {
                 let mut s = DefaultHasher::new();
                 message.data.hash(&mut s);
@@ -121,28 +157,42 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )?;
 
             let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
-            Ok(AdamasBehaviour { gossipsub, mdns })
+
+            Ok(AdamasBehaviour {
+                gossipsub,
+                mdns,
+                relay_client: relay_behaviour,
+            })
         })?
         .build();
 
-    let mut swarm = swarm;
-    
     let topic = gossipsub::IdentTopic::new("adamas-blocks");
     swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    // LOGICA DI BOOTSTRAP / DIALING MANUALE
-    if let Some(bootstrap_addr) = args.get(2) {
-        println!("📞 BOOTSTRAP: Dialing node: {}", bootstrap_addr);
-        if let Ok(addr) = bootstrap_addr.parse::<Multiaddr>() {
-             if let Err(e) = swarm.dial(addr) {
-                 println!("❌ Connection Error: {:?}", e);
-             }
+    // --- LOGICA DI CONNESSIONE AL RELAY ---
+    if let Some(relay_addr_str) = args.get(2) {
+        println!("🗼 CONNECTING TO RELAY TOWER: {}", relay_addr_str);
+        
+        if let Ok(relay_addr) = relay_addr_str.parse::<Multiaddr>() {
+            // Dial fisico
+            if let Err(e) = swarm.dial(relay_addr.clone()) {
+                println!("❌ Failed to dial relay: {:?}", e);
+            } else {
+                println!("✅ Dialing Relay...");
+            }
+
+            // Circuit Listening
+            let circuit_addr = relay_addr.with(libp2p::multiaddr::Protocol::P2pCircuit);
+            match swarm.listen_on(circuit_addr) {
+                Ok(_) => println!("🌍 GLOBAL LISTENING ACTIVE via Relay Circuit"),
+                Err(e) => println!("⚠️ Could not activate circuit listening: {:?}", e),
+            }
         }
     }
 
-    println!("🚀 ADAMAS NODE v3.1 (GLOBAL) STARTED");
+    println!("🚀 ADAMAS NODE v3.3 (GLOBAL CLIENT) STARTED");
     println!("🌍 Dashboard: http://localhost:{}", http_port);
 
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
@@ -209,7 +259,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::select! {
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("📡 MY ADDRESS: {:?}", address);
+                    println!("📡 LISTENING ON: {:?}", address);
                 },
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                     println!("🤝 CONNECTED TO: {:?}", peer_id);

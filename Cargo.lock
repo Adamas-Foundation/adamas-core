@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adamas-core"
-version = "3.2.0"
+version = "3.3.1"
 dependencies = [
  "chrono",
  "futures",
@@ -1224,6 +1224,7 @@ dependencies = [
  "libp2p-noise",
  "libp2p-ping",
  "libp2p-quic",
+ "libp2p-relay",
  "libp2p-swarm",
  "libp2p-tcp",
  "libp2p-upnp",
@@ -1384,6 +1385,7 @@ dependencies = [
  "libp2p-gossipsub",
  "libp2p-identity",
  "libp2p-ping",
+ "libp2p-relay",
  "libp2p-swarm",
  "once_cell",
  "prometheus-client",
