@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adamas Enterprise | Logistics Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.1);
+        }
+        .btn-scan:active { transform: scale(0.98); }
+        @keyframes pulse-neon {
+            0%, 100% { box-shadow: 0 0 10px rgba(6,182,212,0.5); }
+            50% { box-shadow: 0 0 20px rgba(6,182,212,0.8); }
+        }
+        .neon-box { animation: pulse-neon 3s infinite; }
+        
+        /* Scrollbar personalizzata */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-[#0B1120] text-slate-200 font-sans min-h-screen selection:bg-cyan-500 selection:text-white relative">
+
+    <nav class="border-b border-slate-800 bg-[#0B1120]/90 sticky top-0 z-40 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="h-8 w-8 bg-cyan-600 rounded-lg flex items-center justify-center neon-box">
+                        <span class="text-white font-bold text-lg">A</span>
+                    </div>
+                    <h1 class="text-xl font-bold tracking-wider text-white">ADAMAS <span class="text-cyan-500 font-light">ENTERPRISE</span></h1>
+                </div>
+                <div id="connection-status" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-mono uppercase">
+                    Connecting...
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <div class="lg:col-span-5 space-y-6">
+            <div class="glass-panel rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+                <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500 transition-all group-hover:w-1.5"></div>
+                <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Nuova Registrazione
+                </h2>
+                <div class="space-y-4">
+                    <input type="text" id="productName" placeholder="Prodotto / SKU" class="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-cyan-500 text-sm">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="text" id="batchId" placeholder="Lotto ID" class="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-cyan-500 text-sm">
+                        <input type="text" id="operator" placeholder="Operatore" class="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-cyan-500 text-sm">
+                    </div>
+                    <button onclick="certifyBatch()" class="btn-scan w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-2">
+                        REGISTRA SU BLOCKCHAIN
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6 h-60 relative flex flex-col">
+                <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Throughput (Blocks/Min)</h3>
+                <div class="flex-1 w-full relative">
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-7 space-y-6">
+            
+            <div id="result-card" class="glass-panel rounded-2xl p-4 flex items-center gap-6 border-2 border-dashed border-slate-800 transition-all hidden">
+                <div class="bg-white p-2 rounded shrink-0">
+                    <div id="qrcode"></div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-lg font-bold text-white truncate" id="disp-product">---</h3>
+                    <p class="text-cyan-400 text-sm mb-1" id="disp-batch">---</p>
+                    <p class="text-[10px] font-mono text-slate-500 truncate" id="disp-hash">---</p>
+                </div>
+            </div>
+
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <input type="text" id="searchInput" onkeyup="filterBlocks()" 
+                    placeholder="Cerca per Lotto, Prodotto, Hash o ID..." 
+                    class="block w-full pl-10 pr-3 py-3 border border-slate-700 rounded-xl leading-5 bg-slate-900 text-slate-300 placeholder-slate-500 focus:outline-none focus:bg-slate-800 focus:border-cyan-500 sm:text-sm transition duration-150 ease-in-out">
+            </div>
+
+            <div class="glass-panel rounded-2xl flex flex-col h-[500px]">
+                <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider">Blockchain Ledger</h3>
+                    <span class="text-xs text-slate-500 font-mono" id="block-count">0 BLOCKS</span>
+                </div>
+                
+                <div id="block-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+                    </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="detailModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-2xl bg-[#0f172a] border border-cyan-500/30 text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                    
+                    <div class="bg-slate-800/50 px-4 py-3 sm:px-6 border-b border-slate-700 flex justify-between items-center">
+                        <h3 class="text-lg font-medium leading-6 text-cyan-400" id="modal-title">Block Details</h3>
+                        <button onclick="closeModal()" class="text-slate-400 hover:text-white">✕</button>
+                    </div>
+
+                    <div class="px-4 py-5 sm:p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-mono text-slate-500 uppercase">Block Index</label>
+                            <div class="text-2xl font-bold text-white" id="modal-index">#0</div>
+                        </div>
+                        
+                        <div class="bg-slate-900 rounded p-3 border border-slate-700">
+                            <label class="block text-[10px] font-mono text-emerald-500 uppercase mb-1">Stored Data (Payload)</label>
+                            <div class="text-sm text-white break-words" id="modal-data">---</div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-mono text-slate-500 uppercase">Timestamp</label>
+                                <div class="text-xs text-slate-300" id="modal-time">---</div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-mono text-slate-500 uppercase">Size</label>
+                                <div class="text-xs text-slate-300">256 bytes (Est.)</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-500 uppercase">Current Hash (Dilithium-5)</label>
+                            <div class="text-[10px] font-mono text-cyan-600 break-all bg-slate-950 p-2 rounded" id="modal-hash">---</div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs font-mono text-slate-500 uppercase">Previous Hash</label>
+                            <div class="text-[10px] font-mono text-slate-600 break-all bg-slate-950 p-2 rounded" id="modal-prev">---</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800/30 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="closeModal()" class="inline-flex w-full justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-cyan-700 sm:ml-3 sm:w-auto sm:text-sm">Chiudi</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CHART SETUP ---
+        const ctx = document.getElementById('activityChart').getContext('2d');
+        const activityChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: '#06b6d4',
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { display: false }, y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' } } },
+                animation: false
+            }
+        });
+
+        // --- GLOBAL VARIABLES ---
+        let allBlocks = []; // Manteniamo qui tutti i dati per la ricerca
+
+        // --- CORE FUNCTIONS ---
+        async function fetchStatus() {
+            try {
+                let response = await fetch('/blocks'); 
+                if (response.ok) {
+                    let blocks = await response.json();
+                    
+                    // Se ci sono nuovi blocchi, aggiorniamo tutto
+                    if (blocks.length !== allBlocks.length) {
+                        allBlocks = blocks;
+                        renderBlockList(allBlocks); // Ridisegna la lista
+                        updateChartData(allBlocks); // Ridisegna il grafico
+                        document.getElementById('block-count').innerText = blocks.length + " BLOCKS";
+                        setOnlineStatus(true);
+                    }
+                }
+            } catch (error) { setOnlineStatus(false); }
+        }
+
+        function setOnlineStatus(isOnline) {
+            const el = document.getElementById('connection-status');
+            if (isOnline) {
+                el.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono uppercase";
+                el.innerHTML = '<div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_5px_#34d399]"></div> Online';
+            } else {
+                el.innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> Retry...';
+            }
+        }
+
+        // --- LIST & SEARCH LOGIC ---
+        function renderBlockList(blocksToRender) {
+            const listContainer = document.getElementById('block-list');
+            listContainer.innerHTML = ""; // Pulisci lista
+
+            // Ordine inverso (più recente in alto)
+            blocksToRender.slice().reverse().forEach(block => {
+                const time = new Date(Number(block.timestamp)).toLocaleTimeString();
+                
+                // Creiamo l'elemento HTML della riga
+                const div = document.createElement('div');
+                div.className = "bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-cyan-500/50 p-3 rounded-lg cursor-pointer transition-all group";
+                div.onclick = () => openModal(block); // Clicca per dettagli
+
+                div.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-cyan-400">BLOCK #${block.index}</span>
+                        <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                    </div>
+                    <div class="text-sm text-white font-medium truncate group-hover:text-cyan-100">${block.data}</div>
+                    <div class="text-[10px] text-slate-600 truncate font-mono mt-1 group-hover:text-slate-500">Hash: ${block.hash}</div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        function filterBlocks() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allBlocks.filter(block => 
+                block.data.toLowerCase().includes(query) || 
+                block.hash.toLowerCase().includes(query) ||
+                block.index.toString().includes(query)
+            );
+            renderBlockList(filtered);
+        }
+
+        // --- MODAL LOGIC ---
+        function openModal(block) {
+            document.getElementById('modal-index').innerText = "#" + block.index;
+            document.getElementById('modal-data').innerText = block.data;
+            document.getElementById('modal-time').innerText = new Date(Number(block.timestamp)).toLocaleString();
+            document.getElementById('modal-hash').innerText = block.hash;
+            document.getElementById('modal-prev').innerText = block.previous_hash;
+            
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        // --- CHART LOGIC ---
+        function updateChartData(blocks) {
+            let counts = {};
+            let now = Date.now();
+            let limit = 10 * 60 * 1000;
+            blocks.forEach(b => {
+                if (now - b.timestamp < limit) {
+                    let date = new Date(Number(b.timestamp));
+                    let key = date.getHours() + ':' + (date.getMinutes()<10?'0':'') + date.getMinutes();
+                    counts[key] = (counts[key] || 0) + 1;
+                }
+            });
+            activityChart.data.labels = Object.keys(counts);
+            activityChart.data.datasets[0].data = Object.values(counts);
+            activityChart.update();
+        }
+
+        // --- ACTION LOGIC ---
+        async function certifyBatch() {
+            if (typeof QRCode === 'undefined') return;
+            const p = document.getElementById('productName').value;
+            const b = document.getElementById('batchId').value;
+            const o = document.getElementById('operator').value || "ADMIN";
+
+            if (!p || !b) { alert("Dati mancanti"); return; }
+
+            const demoHash = "pq_" + Date.now(); // Solo visivo immediato
+            document.getElementById("qrcode").innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), {
+                text: JSON.stringify({p, b, h: demoHash}),
+                width: 64, height: 64
+            });
+
+            document.getElementById("result-card").classList.remove("hidden");
+            document.getElementById("disp-product").innerText = p;
+            document.getElementById("disp-batch").innerText = b;
+            document.getElementById("disp-hash").innerText = demoHash;
+
+            try {
+                await fetch('/mine/' + encodeURIComponent(`${p} | ${b} | ${o}`));
+                setTimeout(fetchStatus, 300); 
+            } catch(e) {}
+        }
+
+        setInterval(fetchStatus, 2000);
+        fetchStatus();
+    </script>
+</body>
+</html>
