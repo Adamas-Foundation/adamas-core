@@ -1,5 +1,5 @@
 use libp2p::{
-    gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux, PeerId, Swarm,
+    gossipsub, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp, yamux, PeerId, Multiaddr,
 };
 use libp2p::futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use std::env;
 
-// --- STRUTTURE DATI (BLOCKCHAIN) ---
+// --- STRUTTURE DATI ---
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Block {
@@ -22,7 +22,7 @@ struct Block {
     data: String,
     previous_hash: String,
     hash: String,
-    node_id: String, // Chi ha minato il blocco?
+    node_id: String, 
 }
 
 struct Blockchain {
@@ -70,22 +70,21 @@ impl Blockchain {
         };
 
         self.chain.push(new_block.clone());
-        println!("✅ BLOCK #{} ADDED TO CHAIN (Data: {})", new_index, new_block.data);
+        println!("✅ BLOCK #{} MINED: {}", new_index, new_block.data);
         new_block
     }
 
-    // Funzione per aggiungere un blocco ricevuto dal P2P (validazione semplificata)
     fn receive_block(&mut self, remote_block: Block) {
         let last_index = self.chain.last().unwrap().index;
+        // Semplice controllo anti-duplicate e sequenza
         if remote_block.index > last_index {
             self.chain.push(remote_block.clone());
-            println!("📥 P2P SYNC: Received Block #{} from Node {}", remote_block.index, remote_block.node_id);
+            println!("📥 SYNC: Block #{} received from {}", remote_block.index, remote_block.node_id);
         }
     }
 }
 
-// --- NETWORK BEHAVIOUR (Comportamento del Nodo) ---
-// Definiamo cosa sa fare il nodo: mDNS (trovare vicini) e GossipSub (parlare)
+// --- NETWORK BEHAVIOUR ---
 #[derive(NetworkBehaviour)]
 struct AdamasBehaviour {
     gossipsub: gossipsub::Behaviour,
@@ -94,12 +93,10 @@ struct AdamasBehaviour {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // 1. Configurazione Iniziale (Porte e ID)
+    // ARGOMENTI: [0]=prog, [1]=HTTP_PORT, [2]=BOOTSTRAP_ADDRESS (Opzionale)
     let args: Vec<String> = env::args().collect();
-    // Se lanci "cargo run -- 3001", usa la porta 3001, altrimenti 3000
     let http_port = args.get(1).unwrap_or(&"3000".to_string()).clone(); 
     
-    // Generiamo una chiave crittografica per il nodo
     let swarm = libp2p::SwarmBuilder::with_new_identity()
         .with_tokio()
         .with_tcp(
@@ -108,7 +105,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             yamux::Config::default,
         )?
         .with_behaviour(|key| {
-            // Setup GossipSub (Canale di News)
             let message_id_fn = |message: &gossipsub::Message| {
                 let mut s = DefaultHasher::new();
                 message.data.hash(&mut s);
@@ -126,46 +122,53 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 gossipsub_config,
             )?;
 
-            // Setup mDNS (Discovery Locale)
             let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
             Ok(AdamasBehaviour { gossipsub, mdns })
         })?
         .build();
 
     let mut swarm = swarm;
-    let my_peer_id = *swarm.local_peer_id();
     
-    // Sottoscrizione al canale "adamas-blocks"
+    // Topic P2P
     let topic = gossipsub::IdentTopic::new("adamas-blocks");
     swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
-    // Ascolto su una porta P2P casuale (OS assigned) o fissa
+    // Ascolto su tutte le interfacce (porta random OS)
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    println!("🚀 ADAMAS NODE STARTED | PeerID: {}", my_peer_id);
-    println!("🌍 Dashboard available at: http://localhost:{}", http_port);
+    // --- NUOVO: LOGICA DI CONNESSIONE MANUALE (BOOTSTRAP) ---
+    // Se l'utente ha fornito un terzo argomento, prova a connettersi a quell'indirizzo
+    if let Some(bootstrap_addr) = args.get(2) {
+        println!("📞 BOOTSTRAP: Dialing target node: {}", bootstrap_addr);
+        if let Ok(addr) = bootstrap_addr.parse::<Multiaddr>() {
+             swarm.dial(addr)?;
+        } else {
+            println!("❌ ERRORE: Indirizzo bootstrap non valido.");
+        }
+    }
 
-    // Condivisione Blockchain tra Thread
+    println!("🚀 ADAMAS NODE STARTED");
+    println!("🌍 Dashboard: http://localhost:{}", http_port);
+
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
     let blockchain_web = blockchain.clone();
     
-    // Canale per mandare messaggi dal Web al P2P
+    // Canale comandi
     let (tx_p2p, mut rx_p2p) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-    // --- TASK 1: SERVER WEB (Dashboard) ---
+    // TASK 1: WEB SERVER
     tokio::spawn(async move {
         let addr = format!("0.0.0.0:{}", http_port);
         let listener = TcpListener::bind(&addr).await.unwrap();
 
         loop {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let blockchain_ref = blockchain_web.clone();
-            let tx_p2p_ref = tx_p2p.clone();
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let blockchain_ref = blockchain_web.clone();
+                let tx_p2p_ref = tx_p2p.clone();
 
-            tokio::spawn(async move {
-                let mut buffer = [0; 1024];
-                match socket.read(&mut buffer).await {
-                    Ok(_) => {
+                tokio::spawn(async move {
+                    let mut buffer = [0; 1024];
+                    if socket.read(&mut buffer).await.is_ok() {
                         let request = String::from_utf8_lossy(&buffer[..]);
                         let response_body;
                         let response_header;
@@ -179,19 +182,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             let parts: Vec<&str> = request.split_whitespace().collect();
                             if parts.len() > 1 && parts[1].len() > 6 {
                                 let data_raw = &parts[1][6..];
-                                let data_clean = data_raw.replace("%20", " ").replace("%7C", " | ");
+                                let data_clean = data_raw.replace("%20", " ").replace("%7C", " | ").replace("%22", "");
                                 
-                                // 1. Mina il blocco localmente
                                 let new_block = {
                                     let mut chain = blockchain_ref.lock().unwrap();
-                                    chain.add_block(data_clean, "LOCAL_WEB".to_string())
+                                    chain.add_block(data_clean, "WEB_USER".to_string())
                                 };
 
-                                // 2. Invia al P2P
                                 let block_json = serde_json::to_string(&new_block).unwrap();
-                                let _ = tx_p2p_ref.send(block_json);
+                                let _ = tx_p2p_ref.send(block_json); // Invia al P2P
 
-                                response_body = "{\"status\": \"mined_and_broadcasted\"}".to_string();
+                                response_body = "{\"status\": \"ok\"}".to_string();
                                 response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/json";
                             } else {
                                 response_body = "{}".to_string();
@@ -203,38 +204,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             response_body = content;
                             response_header = "HTTP/1.1 200 OK\r\nContent-Type: text/html";
                         } else {
-                            response_body = "404".to_string();
+                            response_body = "".to_string();
                             response_header = "HTTP/1.1 404 NOT FOUND";
                         }
 
                         let response = format!("{}\r\nContent-Length: {}\r\n\r\n{}", response_header, response_body.len(), response_body);
                         let _ = socket.write_all(response.as_bytes()).await;
                     }
-                    Err(_) => {}
-                }
-            });
+                });
+            }
         }
     });
 
-    // --- TASK 2: GESTORE EVENTI P2P (Il Cuore della Rete) ---
+    // TASK 2: P2P MANAGER
     loop {
         tokio::select! {
-            // A. Ascolta eventi dalla rete (altri nodi)
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
-                    println!("📡 P2P Listening on {:?}", address);
+                    // Stampa l'indirizzo esatto per permettere ad altri di connettersi
+                    println!("📡 MY ADDRESS: {:?}", address);
+                },
+                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                    println!("🤝 CONNECTED TO: {:?}", peer_id);
                 },
                 SwarmEvent::Behaviour(AdamasBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        println!("👀 FOUND PEER: {:?}", peer_id);
+                    for (peer_id, _addr) in list {
                         swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                     }
                 },
-                SwarmEvent::Behaviour(AdamasBehaviourEvent::Gossipsub(gossipsub::Event::Message { propagation_source: peer_id, message_id: _, message })) => {
-                    // Abbiamo ricevuto un messaggio!
+                SwarmEvent::Behaviour(AdamasBehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. })) => {
                     let msg_str = String::from_utf8_lossy(&message.data);
                     if let Ok(remote_block) = serde_json::from_str::<Block>(&msg_str) {
-                        println!("⚡ NETWORK: Block received from {:?}", peer_id);
                         let mut chain = blockchain.lock().unwrap();
                         chain.receive_block(remote_block);
                     }
@@ -242,13 +242,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 _ => {}
             },
 
-            // B. Ascolta comandi dal Web (Blocchi minati da noi da inviare agli altri)
             Some(block_json) = rx_p2p.recv() => {
                 let topic = gossipsub::IdentTopic::new("adamas-blocks");
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic, block_json.as_bytes()) {
-                    println!("❌ Publish Error: {:?}", e);
-                } else {
-                    println!("📡 BROADCAST: Block sent to network.");
+                    println!("❌ P2P Broadcast Error: {:?}", e);
                 }
             }
         }
