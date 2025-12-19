@@ -13,7 +13,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use std::env;
 
-// --- STRUTTURE DATI ---
+// --- STRUTTURE BLOCKCHAIN ---
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Block {
@@ -40,7 +40,7 @@ impl Blockchain {
         let genesis_block = Block {
             index: 0,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
-            data: "GENESIS BLOCK - ADAMAS NETWORK ONLINE".to_string(),
+            data: "GENESIS BLOCK - ADAMAS NETWORK".to_string(),
             previous_hash: "0".to_string(),
             hash: "00000000000000000000".to_string(),
             node_id: "GENESIS".to_string(),
@@ -76,7 +76,6 @@ impl Blockchain {
 
     fn receive_block(&mut self, remote_block: Block) {
         let last_index = self.chain.last().unwrap().index;
-        // Semplice controllo anti-duplicate e sequenza
         if remote_block.index > last_index {
             self.chain.push(remote_block.clone());
             println!("📥 SYNC: Block #{} received from {}", remote_block.index, remote_block.node_id);
@@ -93,7 +92,6 @@ struct AdamasBehaviour {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // ARGOMENTI: [0]=prog, [1]=HTTP_PORT, [2]=BOOTSTRAP_ADDRESS (Opzionale)
     let args: Vec<String> = env::args().collect();
     let http_port = args.get(1).unwrap_or(&"3000".to_string()).clone(); 
     
@@ -129,31 +127,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut swarm = swarm;
     
-    // Topic P2P
     let topic = gossipsub::IdentTopic::new("adamas-blocks");
     swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
-    // Ascolto su tutte le interfacce (porta random OS)
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    // --- NUOVO: LOGICA DI CONNESSIONE MANUALE (BOOTSTRAP) ---
-    // Se l'utente ha fornito un terzo argomento, prova a connettersi a quell'indirizzo
+    // LOGICA DI BOOTSTRAP / DIALING MANUALE
     if let Some(bootstrap_addr) = args.get(2) {
-        println!("📞 BOOTSTRAP: Dialing target node: {}", bootstrap_addr);
+        println!("📞 BOOTSTRAP: Dialing node: {}", bootstrap_addr);
         if let Ok(addr) = bootstrap_addr.parse::<Multiaddr>() {
-             swarm.dial(addr)?;
-        } else {
-            println!("❌ ERRORE: Indirizzo bootstrap non valido.");
+             if let Err(e) = swarm.dial(addr) {
+                 println!("❌ Connection Error: {:?}", e);
+             }
         }
     }
 
-    println!("🚀 ADAMAS NODE STARTED");
+    println!("🚀 ADAMAS NODE v3.1 (GLOBAL) STARTED");
     println!("🌍 Dashboard: http://localhost:{}", http_port);
 
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
     let blockchain_web = blockchain.clone();
     
-    // Canale comandi
     let (tx_p2p, mut rx_p2p) = tokio::sync::mpsc::unbounded_channel::<String>();
 
     // TASK 1: WEB SERVER
@@ -177,28 +171,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             let chain = blockchain_ref.lock().unwrap();
                             response_body = serde_json::to_string(&chain.chain).unwrap();
                             response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8";
-                        
                         } else if request.contains("GET /mine/") {
                             let parts: Vec<&str> = request.split_whitespace().collect();
                             if parts.len() > 1 && parts[1].len() > 6 {
                                 let data_raw = &parts[1][6..];
                                 let data_clean = data_raw.replace("%20", " ").replace("%7C", " | ").replace("%22", "");
-                                
                                 let new_block = {
                                     let mut chain = blockchain_ref.lock().unwrap();
                                     chain.add_block(data_clean, "WEB_USER".to_string())
                                 };
-
                                 let block_json = serde_json::to_string(&new_block).unwrap();
-                                let _ = tx_p2p_ref.send(block_json); // Invia al P2P
-
+                                let _ = tx_p2p_ref.send(block_json);
                                 response_body = "{\"status\": \"ok\"}".to_string();
                                 response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/json";
                             } else {
                                 response_body = "{}".to_string();
                                 response_header = "HTTP/1.1 400 ERROR";
                             }
-
                         } else if request.contains("GET / ") || request.contains("dashboard.html") {
                             let content = std::fs::read_to_string("dashboard.html").unwrap_or("<h1>Missing Dashboard</h1>".to_string());
                             response_body = content;
@@ -207,7 +196,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             response_body = "".to_string();
                             response_header = "HTTP/1.1 404 NOT FOUND";
                         }
-
                         let response = format!("{}\r\nContent-Length: {}\r\n\r\n{}", response_header, response_body.len(), response_body);
                         let _ = socket.write_all(response.as_bytes()).await;
                     }
@@ -221,7 +209,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::select! {
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
-                    // Stampa l'indirizzo esatto per permettere ad altri di connettersi
                     println!("📡 MY ADDRESS: {:?}", address);
                 },
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
@@ -241,11 +228,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 },
                 _ => {}
             },
-
             Some(block_json) = rx_p2p.recv() => {
                 let topic = gossipsub::IdentTopic::new("adamas-blocks");
                 if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic, block_json.as_bytes()) {
-                    println!("❌ P2P Broadcast Error: {:?}", e);
+                    println!("❌ Broadcast Error: {:?}", e);
                 }
             }
         }

@@ -1,7 +1,15 @@
 [package]
-name = "adamas-node"
-version = "3.0.0"
+name = "adamas-core"
+version = "3.2.0"
 edition = "2021"
+
+[[bin]]
+name = "adamas-node"
+path = "src/main.rs"
+
+[[bin]]
+name = "adamas-relay"
+path = "src/relay.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -9,6 +17,10 @@ serde_json = "1.0"
 sha3 = "0.10"
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
-# CORREZIONE FINALE: "tcp", "dns" e "tokio" separati
-libp2p = { version = "0.52", features = ["tokio", "tcp", "dns", "noise", "yamux", "gossipsub", "mdns", "macros"] }
+
+# NOTA: Qui sotto ho tolto "relay-server" e "relay" per pulizia
+libp2p = { version = "0.52", features = ["tokio", "tcp", "dns", "noise", "yamux", "gossipsub", "mdns", "macros", "ping"] }
 futures = "0.3"
+
+# IL PEZZO MANCANTE: La libreria specifica per fare da Server Relay
+libp2p-relay = "0.16"

@@ -3,12 +3,13 @@
 version = 4
 
 [[package]]
-name = "adamas-node"
-version = "3.0.0"
+name = "adamas-core"
+version = "3.2.0"
 dependencies = [
  "chrono",
  "futures",
  "libp2p",
+ "libp2p-relay",
  "serde",
  "serde_json",
  "sha3",
@@ -641,6 +642,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures-bounded"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b07bbbe7d7e78809544c6f718d875627addc73a7c3582447abc052cd3dc67e0"
+dependencies = [
+ "futures-timer",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1211,6 +1222,7 @@ dependencies = [
  "libp2p-mdns",
  "libp2p-metrics",
  "libp2p-noise",
+ "libp2p-ping",
  "libp2p-quic",
  "libp2p-swarm",
  "libp2p-tcp",
@@ -1371,6 +1383,7 @@ dependencies = [
  "libp2p-core",
  "libp2p-gossipsub",
  "libp2p-identity",
+ "libp2p-ping",
  "libp2p-swarm",
  "once_cell",
  "prometheus-client",
@@ -1402,6 +1415,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "libp2p-ping"
+version = "0.43.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e702d75cd0827dfa15f8fd92d15b9932abe38d10d21f47c50438c71dd1b5dae3"
+dependencies = [
+ "either",
+ "futures",
+ "futures-timer",
+ "instant",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-swarm",
+ "log",
+ "rand",
+ "void",
+]
+
+[[package]]
 name = "libp2p-quic"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1423,6 +1454,31 @@ dependencies = [
  "socket2 0.5.10",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "libp2p-relay"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65bab06b10bbfb3936955965a01bd8db105b8675faabd55c88f94703feec318b"
+dependencies = [
+ "asynchronous-codec",
+ "bytes",
+ "either",
+ "futures",
+ "futures-bounded",
+ "futures-timer",
+ "instant",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-swarm",
+ "log",
+ "quick-protobuf",
+ "quick-protobuf-codec",
+ "rand",
+ "static_assertions",
+ "thiserror 1.0.69",
+ "void",
 ]
 
 [[package]]
