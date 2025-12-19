@@ -1,68 +1,57 @@
 use libp2p::{
+    core::upgrade,
+    identity,
     noise,
-    swarm::{NetworkBehaviour, SwarmEvent},
-    tcp,
-    yamux,
+    relay,
+    swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent},
+    tcp, yamux, Transport,
 };
 use libp2p::futures::StreamExt;
 use std::error::Error;
-
-// IMPORT FONDAMENTALE: Usiamo la libreria specifica che abbiamo aggiunto
-use libp2p_relay as relay;
+use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
 struct RelayBehaviour {
-    // Ora "relay::Behaviour" si riferisce correttamente alla libreria Server
     relay: relay::Behaviour,
-    ping: libp2p::ping::Behaviour,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // 1. Configurazione del Relay Server
-    // Usiamo la configurazione di default che è perfetta per iniziare
-    let relay_behaviour = relay::Behaviour::new(
-        libp2p::PeerId::random(),
-        relay::Config::default(),
-    );
+    // 1. Chiavi
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = libp2p::PeerId::from(local_key.public());
+    println!("🗼 ADAMAS RELAY TOWER ACTIVE");
+    println!("🆔 SERVER ID: {}", local_peer_id);
 
-    let ping_behaviour = libp2p::ping::Behaviour::new(libp2p::ping::Config::new());
+    // 2. Configurazione
+    let relay_config = relay::Config::default();
+    let relay_behaviour = relay::Behaviour::new(local_peer_id, relay_config);
 
-    // 2. Costruzione dello Swarm
-    let mut swarm = libp2p::SwarmBuilder::with_new_identity()
+    // 3. Swarm
+    let mut swarm = SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
             noise::Config::new,
             yamux::Config::default,
         )?
-        .with_behaviour(|_key| {
-            Ok(RelayBehaviour {
-                relay: relay_behaviour,
-                ping: ping_behaviour,
-            })
-        })?
+        .with_behaviour(|_| RelayBehaviour { relay: relay_behaviour })?
+        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    // 3. Ascolto sulla porta pubblica 4001
+    // 4. Ascolto
     swarm.listen_on("/ip4/0.0.0.0/tcp/4001".parse()?)?;
+    println!("📡 LISTENING ON PORT 4001");
 
-    let my_peer_id = *swarm.local_peer_id();
-    println!("🗼 ADAMAS RELAY TOWER ACTIVE");
-    println!("-------------------------------------------------");
-    println!("🔑 SERVER ID: {}", my_peer_id);
-    println!("📡 Listening on port 4001...");
-    println!("-------------------------------------------------");
-
-    // 4. Loop Infinito
+    // 5. Loop
     loop {
         match swarm.select_next_some().await {
             SwarmEvent::NewListenAddr { address, .. } => {
-                println!("👂 Listening Interface: {:?}", address);
-            }
+                println!("🔗 ADDRESS: {:?}", address);
+            },
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("🔗 New Client Connected: {:?}", peer_id);
-            }
+            },
             _ => {}
         }
     }

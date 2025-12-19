@@ -1,6 +1,6 @@
 [package]
 name = "adamas-core"
-version = "3.3.1"
+version = "3.4.0"
 edition = "2021"
 
 [[bin]]
@@ -17,6 +17,8 @@ serde_json = "1.0"
 sha3 = "0.10"
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
+# Feature "relay" per il Client
 libp2p = { version = "0.52", features = ["relay", "tokio", "tcp", "dns", "noise", "yamux", "gossipsub", "mdns", "macros", "ping"] }
 futures = "0.3"
+# Pacchetto specifico per il Server
 libp2p-relay = "0.16"
