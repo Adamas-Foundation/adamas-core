@@ -1,123 +1,260 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adamas Enterprise Monitor</title>
+    <title>Adamas Enterprise | Logistics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
     <style>
-        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        header { border-bottom: 1px solid #30363d; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        h1 { margin: 0; font-size: 1.5rem; color: #58a6ff; }
-        .status-badge { background: #238636; color: white; padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; box-shadow: 0 0 10px #238636; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
-        .stat-label { font-size: 0.9rem; color: #8b949e; }
-        .stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 5px; color: #fff; }
-        
-        /* TABLE STYLES */
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { text-align: left; color: #8b949e; border-bottom: 1px solid #30363d; padding: 10px; font-size: 0.9rem; }
-        td { padding: 10px; border-bottom: 1px solid #21262d; font-family: monospace; color: #7ee787; font-size: 0.9rem; }
-        tr:first-child td { background-color: #1c2525; color: #fff; font-weight: bold; } /* Evidenzia l'ultimo blocco */
-
-        .hash-truncate { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
-        .no-data { color: #8b949e; font-style: italic; padding: 20px; text-align: center; }
+        /* Effetto "Vetro" per i pannelli */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-text {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+        /* Animazione pulsante */
+        .btn-scan:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
-<body>
-    <div class="container">
-        <header>
-            <div id="chain-name"><h1>SYSTEM LOADING...</h1></div>
-            <div class="status-badge">● LIVE CONNECTION</div>
-        </header>
+<body class="bg-slate-900 text-slate-200 font-sans min-h-screen">
 
-        <div class="card" style="display: flex; gap: 40px;">
-            <div>
-                <div class="stat-label">NODE IDENTITY</div>
-                <div class="stat-value" id="node-role">---</div>
+    <nav class="border-b border-slate-700 bg-slate-950/80 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="h-8 w-8 bg-cyan-500 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.5)]">
+                        <span class="text-slate-900 font-bold text-lg">A</span>
+                    </div>
+                    <h1 class="text-xl font-bold tracking-wider text-white">ADAMAS <span class="text-cyan-400 font-light">ENTERPRISE</span></h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="connection-status" class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/50 text-red-400 text-xs font-mono uppercase tracking-widest">
+                        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                        Disconnected
+                    </div>
+                </div>
             </div>
-            <div>
-                <div class="stat-label">VERSION</div>
-                <div class="stat-value" id="version" style="color: #58a6ff;">---</div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+        <div class="space-y-6">
+            <div class="glass-panel rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                
+                <h2 class="text-2xl font-bold text-white mb-1">Registra Prodotto</h2>
+                <p class="text-slate-400 text-sm mb-6">Certificazione sicura su Blockchain Dilithium-5</p>
+
+                <form id="certifyForm" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-cyan-400 uppercase tracking-wider mb-1">Nome Prodotto / SKU</label>
+                        <input type="text" id="productName" placeholder="Es. Amarone Riserva 2018" 
+                            class="w-full bg-slate-800/50 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-cyan-400 uppercase tracking-wider mb-1">Numero Lotto</label>
+                            <input type="text" id="batchId" placeholder="BATCH-88-XB" 
+                                class="w-full bg-slate-800/50 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-cyan-400 uppercase tracking-wider mb-1">Operatore</label>
+                            <input type="text" id="operator" placeholder="Mario Rossi" 
+                                class="w-full bg-slate-800/50 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600">
+                        </div>
+                    </div>
+
+                    <button type="button" onclick="certifyBatch()" 
+                        class="btn-scan w-full mt-4 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(8,145,178,0.3)] transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        CERTIFICA E GENERA QR
+                    </button>
+                </form>
             </div>
-            <div>
-                <div class="stat-label">STATUS</div>
-                <div class="stat-value" style="color: #238636;">SECURE</div>
+
+            <div class="glass-panel rounded-2xl p-6 h-64 overflow-hidden flex flex-col">
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">Blockchain Live Stream</h3>
+                <div id="console-output" class="font-mono text-xs space-y-2 overflow-y-auto flex-1 text-emerald-400">
+                    <p class="text-slate-500">In attesa di dati...</p>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <h3 style="margin-top: 0; color: #c9d1d9;">⛓️ Blockchain Ledger (Real-Time)</h3>
-            <div id="blocks-container">
-                <table id="blocks-table">
-                    <thead>
-                        <tr>
-                            <th>HEIGHT</th>
-                            <th>BLOCK HASH (SHA-256)</th>
-                            <th>TXs</th>
-                            <th>STATUS</th>
-                        </tr>
-                    </thead>
-                    <tbody id="blocks-body">
-                        </tbody>
-                </table>
-                <div id="no-data-msg" class="no-data">Waiting for new blocks...</div>
+        <div class="space-y-6">
+            <div id="result-card" class="glass-panel rounded-2xl p-8 flex flex-col items-center justify-center text-center border-2 border-dashed border-slate-700 min-h-[500px] transition-all">
+                
+                <div id="placeholder-state" class="opacity-100 transition-opacity">
+                    <div class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-medium text-slate-300">Pronto per Certificare</h3>
+                    <p class="text-slate-500 mt-2 text-sm">Inserisci i dati del lotto e premi il pulsante per minare il blocco.</p>
+                </div>
+
+                <div id="success-state" class="hidden w-full">
+                    <div class="bg-white p-4 rounded-xl shadow-lg w-fit mx-auto mb-6">
+                        <div id="qrcode"></div>
+                    </div>
+                    
+                    <h3 class="text-2xl font-bold text-white mb-1">CERTIFICATO #<span id="block-height-disp">0</span></h3>
+                    <p class="text-emerald-400 text-sm font-mono mb-6">SECURE HASH GENERATED</p>
+
+                    <div class="bg-slate-800/50 rounded-lg p-4 text-left w-full border border-slate-700">
+                        <div class="flex justify-between mb-2 border-b border-slate-700 pb-2">
+                            <span class="text-slate-400 text-xs">PRODOTTO</span>
+                            <span id="disp-product" class="text-cyan-300 text-sm font-bold text-right">---</span>
+                        </div>
+                        <div class="flex justify-between mb-2 border-b border-slate-700 pb-2">
+                            <span class="text-slate-400 text-xs">LOTTO</span>
+                            <span id="disp-batch" class="text-white text-sm text-right">---</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400 text-xs">HASH (Post-Quantum)</span>
+                        </div>
+                        <p id="disp-hash" class="text-[10px] text-slate-500 font-mono break-all mt-1">---</p>
+                    </div>
+
+                    <button onclick="window.print()" class="mt-6 text-slate-400 hover:text-white text-sm flex items-center justify-center gap-2 mx-auto">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                        Stampa Etichetta
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
+    </main>
 
     <script>
-        // Funzione per aggiornare i dati
-        async function fetchSystemData() {
+        // LOGICA JAVASCRIPT AGGIORNATA E SICURA
+
+        // 1. Funzione per aggiornare lo stato (Polling ogni 3 secondi)
+        async function fetchStatus() {
             try {
-                // 1. Prendi Info Generali
-                const resStats = await fetch('/api/stats');
-                const dataStats = await resStats.json();
-                document.getElementById('chain-name').innerHTML = `<h1>${dataStats.chain_name}</h1>`;
-                document.getElementById('node-role').innerText = dataStats.node_role;
-                document.getElementById('version').innerText = dataStats.version;
-
-                // 2. Prendi i Blocchi
-                const resBlocks = await fetch('/api/blocks');
-                const blocks = await resBlocks.json();
-                
-                updateTable(blocks);
-
+                let response = await fetch('/blocks'); 
+                if (response.ok) {
+                    let data = await response.json();
+                    setOnlineStatus(true);
+                    updateConsole(data);
+                }
             } catch (error) {
-                console.error('Connection lost:', error);
+                setOnlineStatus(false);
             }
         }
 
-        function updateTable(blocks) {
-            const tbody = document.getElementById('blocks-body');
-            const noDataMsg = document.getElementById('no-data-msg');
+        function setOnlineStatus(isOnline) {
+            const el = document.getElementById('connection-status');
+            if (isOnline) {
+                el.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-900/30 border border-emerald-500/50 text-emerald-400 text-xs font-mono uppercase tracking-widest";
+                el.innerHTML = '<div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div> SYSTEM ONLINE';
+            } else {
+                el.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/50 text-red-400 text-xs font-mono uppercase tracking-widest";
+                el.innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> DISCONNECTED';
+            }
+        }
 
-            if (blocks.length === 0) {
-                noDataMsg.style.display = 'block';
-                tbody.innerHTML = '';
+        function updateConsole(blocks) {
+            const consoleDiv = document.getElementById('console-output');
+            if (blocks.length > 0) {
+                const lastBlock = blocks[blocks.length - 1];
+                // Mostriamo solo data e hash per pulizia
+                const msg = `[BLOCK #${lastBlock.index}] ${lastBlock.data}`;
+                
+                // Evita duplicati nel log visivo
+                if (!consoleDiv.innerHTML.includes(msg) && !consoleDiv.innerHTML.includes(lastBlock.hash)) {
+                    const time = new Date(Number(lastBlock.timestamp)).toLocaleTimeString();
+                    const newEntry = `
+                        <div class="border-l-2 border-emerald-500 pl-2 py-1 mb-2">
+                            <span class="text-cyan-300 font-bold text-xs">[${time}]</span> <span class="text-white">${lastBlock.data}</span><br>
+                            <span class="text-slate-500 text-[10px] break-all">${lastBlock.hash.substring(0, 40)}...</span>
+                        </div>`;
+                    consoleDiv.innerHTML = newEntry + consoleDiv.innerHTML;
+                }
+            }
+        }
+
+        // 2. Funzione CERTIFICA (Con controlli di errore)
+        async function certifyBatch() {
+            // A. Controlla se la libreria è caricata
+            if (typeof QRCode === 'undefined') {
+                alert("ERRORE: La libreria QR Code non è stata caricata dal browser.\nControlla la connessione internet o il firewall.");
                 return;
             }
 
-            noDataMsg.style.display = 'none';
-            let html = '';
-            
-            blocks.forEach(block => {
-                html += `
-                    <tr>
-                        <td>#${block.index}</td>
-                        <td><span class="hash-truncate">${block.hash}</span></td>
-                        <td>${block.tx_count}</td>
-                        <td><span style="color: #238636;">✔ CONFIRMED</span></td>
-                    </tr>
-                `;
-            });
+            // B. Prendi i dati
+            const product = document.getElementById('productName').value;
+            const batch = document.getElementById('batchId').value;
+            const operator = document.getElementById('operator').value || "Anonimo";
 
-            tbody.innerHTML = html;
+            if (!product || !batch) {
+                alert("ATTENZIONE: Devi inserire almeno Nome Prodotto e Lotto.");
+                return;
+            }
+
+            // C. Genera HASH simulato per l'anteprima
+            const demoHash = "adm_pq_" + Math.random().toString(36).substring(2, 10) + Date.now();
+
+            // D. Aggiorna la Grafica (Prima del server, per feedback immediato)
+            try {
+                document.getElementById("qrcode").innerHTML = ""; // Pulisci
+                
+                new QRCode(document.getElementById("qrcode"), {
+                    text: `ADAMAS CERTIFIED\nProduct: ${product}\nBatch: ${batch}\nHash: ${demoHash}`,
+                    width: 128,
+                    height: 128,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+
+                // Mostra pannello risultato
+                document.getElementById("placeholder-state").classList.add("hidden");
+                document.getElementById("success-state").classList.remove("hidden");
+                
+                // Riempi i campi
+                document.getElementById("disp-product").innerText = product;
+                document.getElementById("disp-batch").innerText = batch;
+                document.getElementById("disp-hash").innerText = demoHash;
+                document.getElementById("block-height-disp").innerText = "MINING...";
+
+            } catch (uiError) {
+                alert("Errore Grafico: " + uiError);
+                return;
+            }
+
+            // E. Invia al Server Rust (Backend)
+            try {
+                // Costruisci URL sicuro
+                const safeData = encodeURIComponent(`${product} | ${batch} | ${operator}`);
+                
+                console.log("Invio richiesta a: /mine/" + safeData);
+                let response = await fetch('/mine/' + safeData);
+                
+                if (response.ok) {
+                    console.log("Mining avviato con successo");
+                    // Forza un aggiornamento immediato della console
+                    setTimeout(fetchStatus, 500); 
+                } else {
+                    alert("Errore dal Server: " + response.status);
+                }
+
+            } catch(netError) {
+                alert("Errore di Rete: Il server Adamas non risponde.\nAssicurati che 'cargo run' sia attivo nel terminale.");
+                console.error(netError);
+            }
         }
 
-        // Aggiorna ogni 2 secondi
-        setInterval(fetchSystemData, 2000);
-        fetchSystemData();
+        // Avvio automatico
+        fetchStatus();
+        setInterval(fetchStatus, 3000);
+
     </script>
 </body>
 </html>
